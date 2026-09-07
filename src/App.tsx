@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart, Plus, Minus, X, Truck, Store, Banknote,
-  Landmark, ChevronLeft, Check, MessageCircle, Sparkles, Search
+  Landmark, ChevronLeft, Check, MessageCircle, Sparkles, Search, Clock
 } from "lucide-react";
 
 /* ============================================================
@@ -415,11 +415,11 @@ const products = [
   { id: 371, code: 238, name: "Vaso Plástico 180cc Blanco x100u", price: 7500, category: "papeleria", emoji: "✏️", unavailable: false },
 ];
 
-function money(n) {
+function money(n: number) {
   return n.toLocaleString("es-AR");
 }
 
-function PriceTag({ amount, small }) {
+function PriceTag({ amount, small }: { amount: number; small?: boolean }) {
   return (
     <div
       className="relative inline-flex items-center"
@@ -461,7 +461,17 @@ function PriceTag({ amount, small }) {
    con guión en su lugar: productos/39-40.jpg
    Si la foto no existe todavía, se muestra el emoji como antes.
    ============================================================ */
-function ProductImage({ product, className, style, emojiSize }) {
+function ProductImage({
+  product,
+  className,
+  style,
+  emojiSize,
+}: {
+  product: any;
+  className?: string;
+  style?: React.CSSProperties;
+  emojiSize?: number;
+}) {
   const [error, setError] = useState(false);
   const fileName = String(product.code).replace(/\*/g, "-");
   const src = `/productos/${fileName}.jpg`;
@@ -491,14 +501,15 @@ function ProductImage({ product, className, style, emojiSize }) {
 }
 
 export default function LimpiezaApp() {
-  const [cart, setCart] = useState({});
+  const [cart, setCart] = useState<Record<number, number>>({});
   const [activeCategory, setActiveCategory] = useState("limpiadores");
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [step, setStep] = useState(0); // 0 carrito, 1 entrega, 2 pago, 3 contacto, 4 resumen
-  const [delivery, setDelivery] = useState(null);
+  const [delivery, setDelivery] = useState<string | null>(null);
   const [address, setAddress] = useState({ calle: "", altura: "", barrio: "", referencia: "" });
-  const [payment, setPayment] = useState(null);
+  const [timeSlot, setTimeSlot] = useState<string | null>(null);
+  const [payment, setPayment] = useState<string | null>(null);
   const [contact, setContact] = useState({ nombre: "", telefono: "" });
   const [bump, setBump] = useState(false);
   const firstRender = useRef(true);
@@ -526,12 +537,12 @@ export default function LimpiezaApp() {
     return () => clearTimeout(t);
   }, [cartCount]);
 
-  function addToCart(id) {
+  function addToCart(id: number) {
     const product = products.find((p) => p.id === id);
     if (!product || product.unavailable) return;
     setCart((c) => ({ ...c, [id]: (c[id] || 0) + 1 }));
   }
-  function removeOne(id) {
+  function removeOne(id: number) {
     setCart((c) => {
       const next = { ...c };
       if (!next[id]) return c;
@@ -549,7 +560,7 @@ export default function LimpiezaApp() {
     setSheetOpen(false);
   }
 
-  const canGoToPayment = delivery === "retiro" || (delivery === "envio" && address.calle && address.altura);
+  const canGoToPayment = delivery === "retiro" || (delivery === "envio" && address.calle && address.altura && timeSlot);
   const canGoToContact = !!payment;
   const canConfirm = contact.nombre.trim() && contact.telefono.trim();
 
@@ -565,6 +576,7 @@ export default function LimpiezaApp() {
     lines.push("");
     if (delivery === "envio") {
       lines.push(`Entrega: envío a domicilio`);
+      lines.push(`Horario preferido: ${timeSlot === "manana" ? "Mañana" : "Tarde"}`);
       lines.push(`Dirección: ${address.calle} ${address.altura}${address.barrio ? ", " + address.barrio : ""}`);
       if (address.referencia) lines.push(`Referencia: ${address.referencia}`);
     } else {
@@ -882,7 +894,38 @@ export default function LimpiezaApp() {
 
                   {delivery === "envio" && (
                     <div className="flex flex-col gap-2 mt-1 fade-in">
-                      <div className="flex gap-2">
+                      <div>
+                        <div className="flex items-center gap-1.5 mb-2" style={{ color: colors.gray, fontSize: 12.5 }}>
+                          <Clock size={14} />
+                          ¿En qué horario preferís recibirlo?
+                        </div>
+                        <div className="flex gap-2">
+                          {[
+                            { id: "manana", label: "Mañana" },
+                            { id: "tarde", label: "Tarde" },
+                          ].map((slot) => {
+                            const active = timeSlot === slot.id;
+                            return (
+                              <button
+                                key={slot.id}
+                                onClick={() => setTimeSlot(slot.id)}
+                                className="flex-1 rounded-xl py-2.5 text-center"
+                                style={{
+                                  background: active ? colors.primary : colors.white,
+                                  color: active ? colors.white : colors.ink,
+                                  border: `1px solid ${active ? colors.primary : colors.mintDark}`,
+                                  fontFamily: "'Baloo 2', sans-serif",
+                                  fontWeight: 600,
+                                  fontSize: 13,
+                                }}
+                              >
+                                {slot.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mt-1">
                         <input
                           placeholder="Calle"
                           value={address.calle}
@@ -981,6 +1024,12 @@ export default function LimpiezaApp() {
                       <span>Entrega</span>
                       <span>{delivery === "envio" ? "Envío a domicilio" : "Retiro en el local"}</span>
                     </div>
+                    {delivery === "envio" && (
+                      <div className="flex justify-between text-sm">
+                        <span>Horario</span>
+                        <span>{timeSlot === "manana" ? "Mañana" : "Tarde"}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-sm">
                       <span>Pago</span>
                       <span>{payment === "efectivo" ? "Efectivo" : "Transferencia"}</span>
@@ -1068,7 +1117,7 @@ export default function LimpiezaApp() {
                 </button>
               )}
               {step === 4 && (
-                <a
+                
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
