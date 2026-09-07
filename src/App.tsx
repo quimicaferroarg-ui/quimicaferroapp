@@ -1117,7 +1117,7 @@ export default function LimpiezaApp() {
                 </button>
               )}
               {step === 4 && (
-                
+                <a
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
