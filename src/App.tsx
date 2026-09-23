@@ -582,12 +582,22 @@ export default function LimpiezaApp() {
   const [aliasCopied, setAliasCopied] = useState(false);
   const firstRender = useRef(true);
 
+  // Sin tildes ni mayúsculas, para que "jabon" encuentre "Jabón".
+  const normalize = (text: string) =>
+    text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const searchWords = normalize(search).split(/\s+/).filter(Boolean);
+  const searching = searchWords.length > 0;
+
+  // Si hay algo escrito en el buscador, se busca en TODOS los productos;
+  // si no, se muestra la categoría (y subcategoría) elegida.
   const visibleProducts = products.filter((p) => {
+    if (searching) {
+      const text = normalize(`${p.name} ${p.code}`);
+      return searchWords.every((w) => text.includes(w));
+    }
     if (p.category !== activeCategory) return false;
     if (activeSub && (p as any).sub !== activeSub) return false;
-    if (!search.trim()) return true;
-    const q = search.trim().toLowerCase();
-    return p.name.toLowerCase().includes(q) || String(p.code).includes(q);
+    return true;
   });
 
   const cartCount = Object.values(cart).reduce((a, b) => a + b, 0);
@@ -772,6 +782,7 @@ export default function LimpiezaApp() {
               onClick={() => {
                 setActiveCategory(c.id);
                 setActiveSub(null);
+                setSearch("");
               }}
               className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full"
               style={{
@@ -798,7 +809,10 @@ export default function LimpiezaApp() {
             return (
               <button
                 key={s.id || "todo"}
-                onClick={() => setActiveSub(s.id)}
+                onClick={() => {
+                  setActiveSub(s.id);
+                  setSearch("");
+                }}
                 className="shrink-0 flex items-center gap-1 px-3 py-1.5 rounded-full"
                 style={{
                   background: active ? colors.lime : colors.white,
@@ -825,11 +839,26 @@ export default function LimpiezaApp() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nombre o código..."
-            className="w-full rounded-full pl-9 pr-3 py-2.5 text-sm"
+            placeholder="Buscar en todos los productos..."
+            className="w-full rounded-full pl-9 pr-9 py-2.5 text-sm"
             style={{ border: `1px solid ${colors.mintDark}`, background: colors.white }}
           />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute rounded-full flex items-center justify-center"
+              style={{ right: 8, top: "50%", transform: "translateY(-50%)", width: 26, height: 26, background: colors.mint }}
+              aria-label="Borrar búsqueda"
+            >
+              <X size={14} color={colors.gray} />
+            </button>
+          )}
         </div>
+        {searching && (
+          <p style={{ color: colors.gray, fontSize: 12, marginTop: 6, paddingLeft: 4 }}>
+            {visibleProducts.length} {visibleProducts.length === 1 ? "resultado" : "resultados"} en todas las categorías
+          </p>
+        )}
       </div>
 
       <main className="flex-1 px-5 pt-2 pb-28 grid grid-cols-2 gap-3">
@@ -859,6 +888,11 @@ export default function LimpiezaApp() {
               <div style={{ color: colors.gray, fontSize: 12, marginTop: 2, marginBottom: 8, fontFamily: "'Space Mono', monospace" }}>
                 Cód. {p.code}
               </div>
+              {searching && (
+                <div style={{ color: colors.gray, fontSize: 11, marginTop: -6, marginBottom: 8 }}>
+                  {categories.find((c) => c.id === p.category)?.label}
+                </div>
+              )}
 
               <div className="mt-auto flex items-center justify-between gap-2">
                 {p.unavailable ? (
