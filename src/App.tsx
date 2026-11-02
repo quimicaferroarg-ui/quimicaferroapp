@@ -18,7 +18,7 @@ const MP_ALIAS = "quimicaferro"; // alias de Mercado Pago para transferencias
 // el primer pedido manda un mail de activación a esta casilla; hay que tocar
 // "Activate" una sola vez y desde ahí llegan todos directo.
 // Si queda vacío, el pedido se manda por WhatsApp como antes.
-const ORDER_EMAIL = "";
+const ORDER_EMAIL = "quimicaferroarg@gmail.com";
 
 const colors = {
   bg: "#F6FBFA",
