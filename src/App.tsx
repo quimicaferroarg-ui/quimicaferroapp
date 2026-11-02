@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   ShoppingCart, Plus, Minus, X, Truck, Store, Banknote,
-  Landmark, ChevronLeft, Check, MessageCircle, Sparkles, Search, Clock, MapPin, Copy
+  Landmark, ChevronLeft, Check, MessageCircle, Sparkles, Search, Clock, MapPin, Copy,
+  Send, Loader2
 } from "lucide-react";
 
 /* ============================================================
@@ -9,10 +10,15 @@ import {
    ============================================================ */
 const STORE_NAME = "Química Ferro";
 const STORE_TAGLINE = "Limpieza, bazar y artículos para el hogar";
-const WHATSAPP_NUMBER = "5491154647972"; // del catálogo: 11 5464-7972 — revisar que sea el numero correcto de WhatsApp
+const WHATSAPP_NUMBER = "5491154647972"; // 11 5464-7972
 const STORE_ADDRESS = "Altolaguirre 1427/29, C.A.B.A.";
-const STORE_HOURS = "Lun a vie de 16 a 20 hs · Sáb de 10 a 13 hs";
+const STORE_HOURS = "Lun a vie de 16 a 20 hs · Sáb de 10 a 13:30 hs";
 const MP_ALIAS = "quimicaferro"; // alias de Mercado Pago para transferencias
+// Mail donde llegan los pedidos. Se envían con FormSubmit (formsubmit.co):
+// el primer pedido manda un mail de activación a esta casilla; hay que tocar
+// "Activate" una sola vez y desde ahí llegan todos directo.
+// Si queda vacío, el pedido se manda por WhatsApp como antes.
+const ORDER_EMAIL = "";
 
 const colors = {
   bg: "#F6FBFA",
@@ -580,6 +586,9 @@ export default function LimpiezaApp() {
   const [contact, setContact] = useState({ nombre: "", telefono: "" });
   const [bump, setBump] = useState(false);
   const [aliasCopied, setAliasCopied] = useState(false);
+  const [notes, setNotes] = useState("");
+  const [sendState, setSendState] = useState<"idle" | "sending" | "error">("idle");
+  const [sentOrder, setSentOrder] = useState<{ id: string; payment: string | null; total: number } | null>(null);
   const firstRender = useRef(true);
 
   // Sin tildes ni mayúsculas, para que "jabon" encuentre "Jabón".
@@ -633,10 +642,13 @@ export default function LimpiezaApp() {
 
   function openCart() {
     setStep(0);
+    setSentOrder(null);
+    setSendState("idle");
     setSheetOpen(true);
   }
   function closeSheet() {
     setSheetOpen(false);
+    setSentOrder(null);
   }
 
   function copyAlias() {
@@ -650,9 +662,9 @@ export default function LimpiezaApp() {
   const canGoToContact = !!payment;
   const canConfirm = contact.nombre.trim() && contact.telefono.trim();
 
-  function buildMessage() {
+  function buildMessage(orderId?: string) {
     const lines = [];
-    lines.push(`Hola! Quiero hacer un pedido en ${STORE_NAME}:`);
+    lines.push(`Hola! Quiero hacer un pedido en ${STORE_NAME}${orderId ? ` (pedido ${orderId})` : ""}:`);
     lines.push("");
     cartItems.forEach((p) => {
       lines.push(`• Cód. ${p.code} — ${p.name} x${p.qty} — $${money(p.price * p.qty)}`);
@@ -675,7 +687,65 @@ export default function LimpiezaApp() {
     lines.push("");
     lines.push(`Nombre: ${contact.nombre}`);
     lines.push(`Teléfono: ${contact.telefono}`);
+    if (notes.trim()) lines.push(`Notas: ${notes.trim()}`);
     return lines.join("\n");
+  }
+
+  // Número corto para identificar el pedido, ej: F-0211-4821 (día/mes + 4 dígitos)
+  function newOrderId() {
+    const d = new Date();
+    const dd = String(d.getDate()).padStart(2, "0");
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    return `F-${dd}${mm}-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  function resetOrder() {
+    setCart({});
+    setDelivery(null);
+    setTimeSlot(null);
+    setPayment(null);
+    setNotes("");
+    setAddress({ calle: "", altura: "", barrio: "", referencia: "" });
+  }
+
+  // Envía el pedido directo al mail del local, sin pasar por WhatsApp.
+  async function sendOrder() {
+    if (sendState === "sending") return;
+    const orderId = newOrderId();
+    setSendState("sending");
+    try {
+      const res = await fetch(`https://formsubmit.co/ajax/${ORDER_EMAIL}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          _subject: `Nuevo pedido ${orderId} — ${contact.nombre} — $${money(subtotal)}`,
+          _template: "box",
+          _captcha: "false",
+          Pedido: orderId,
+          Nombre: contact.nombre,
+          Teléfono: contact.telefono,
+          Entrega: delivery === "envio" ? "Envío a domicilio" : "Retiro en el local",
+          Dirección:
+            delivery === "envio"
+              ? `${address.calle} ${address.altura}${address.barrio ? ", " + address.barrio : ""}${address.referencia ? " (Ref: " + address.referencia + ")" : ""}`
+              : "-",
+          Horario: delivery === "envio" ? (timeSlot === "manana" ? "Mañana" : "Tarde") : "-",
+          Pago: payment === "efectivo" ? "Efectivo" : "Transferencia",
+          Productos: cartItems
+            .map((p) => `Cód. ${p.code} — ${p.name} x${p.qty} — $${money(p.price * p.qty)}`)
+            .join("\n"),
+          Total: `$${money(subtotal)}`,
+          Notas: notes.trim() || "-",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || String(data.success) === "false") throw new Error("send failed");
+      setSentOrder({ id: orderId, payment, total: subtotal });
+      setSendState("idle");
+      resetOrder();
+    } catch {
+      setSendState("error");
+    }
   }
 
   const waHref = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(buildMessage())}`;
@@ -700,10 +770,10 @@ export default function LimpiezaApp() {
       <header
         className="sticky top-0 z-20 px-5 pt-6 pb-4"
         style={{
-          background: `radial-gradient(circle at 12% 20%, rgba(255,255,255,0.10) 0 6px, transparent 7px),
-                       radial-gradient(circle at 78% 60%, rgba(255,255,255,0.08) 0 8px, transparent 9px),
-                       radial-gradient(circle at 40% 85%, rgba(255,255,255,0.10) 0 5px, transparent 6px),
-                       radial-gradient(circle at 92% 15%, rgba(255,255,255,0.08) 0 4px, transparent 5px),
+          // Burbujas decorativas de fondo: tenues y sobre los bordes, para no tapar el texto.
+          background: `radial-gradient(circle at 98% 8%, rgba(255,255,255,0.05) 0 22px, transparent 23px),
+                       radial-gradient(circle at 70% 100%, rgba(255,255,255,0.04) 0 16px, transparent 17px),
+                       radial-gradient(circle at 2% 96%, rgba(255,255,255,0.04) 0 12px, transparent 13px),
                        ${colors.primary}`,
         }}
       >
@@ -714,7 +784,7 @@ export default function LimpiezaApp() {
               style={{ color: colors.lime }}
             >
               <Sparkles size={16} />
-              <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11, letterSpacing: 1 }}>
+              <span style={{ fontFamily: "'Space Mono', monospace", fontSize: 11.5, letterSpacing: 0.3, color: colors.mint }}>
                 {STORE_HOURS}
               </span>
             </div>
@@ -881,7 +951,7 @@ export default function LimpiezaApp() {
                 opacity: p.unavailable ? 0.5 : 1,
               }}
             >
-              <ProductImage product={p} className="mb-2" style={{ height: 76 }} emojiSize={32} />
+              <ProductImage product={p} className="mb-2" style={{ height: 130 }} emojiSize={40} />
               <div style={{ fontFamily: "'Baloo 2', sans-serif", fontWeight: 600, fontSize: 14, lineHeight: 1.15 }}>
                 {p.name}
               </div>
@@ -967,7 +1037,7 @@ export default function LimpiezaApp() {
             {/* header del sheet */}
             <div className="flex items-center justify-between px-5 py-4" style={{ background: colors.white, borderBottom: `1px solid ${colors.mintDark}` }}>
               <div className="flex items-center gap-2">
-                {step > 0 && (
+                {step > 0 && !sentOrder && (
                   <button onClick={() => setStep(step - 1)} aria-label="Volver">
                     <ChevronLeft size={22} color={colors.ink} />
                   </button>
@@ -977,7 +1047,8 @@ export default function LimpiezaApp() {
                   {step === 1 && "¿Cómo lo recibís?"}
                   {step === 2 && "¿Cómo pagás?"}
                   {step === 3 && "Tus datos"}
-                  {step === 4 && "Confirmá tu pedido"}
+                  {step === 4 && !sentOrder && "Confirmá tu pedido"}
+                  {sentOrder && "¡Pedido enviado!"}
                 </span>
               </div>
               <button onClick={closeSheet} aria-label="Cerrar">
@@ -1003,7 +1074,7 @@ export default function LimpiezaApp() {
                     <div className="flex flex-col gap-3">
                       {cartItems.map((p) => (
                         <div key={p.id} className="flex items-center gap-3">
-                          <ProductImage product={p} className="shrink-0" style={{ width: 48, height: 48 }} emojiSize={22} />
+                          <ProductImage product={p} className="shrink-0" style={{ width: 60, height: 60 }} emojiSize={24} />
                           <div className="flex-1 min-w-0">
                             <div style={{ fontFamily: "'Baloo 2', sans-serif", fontWeight: 600, fontSize: 14 }}>{p.name}</div>
                             <div style={{ color: colors.gray, fontSize: 12, fontFamily: "'Space Mono', monospace" }}>Cód. {p.code}</div>
@@ -1029,7 +1100,7 @@ export default function LimpiezaApp() {
               {step === 1 && (
                 <div className="flex flex-col gap-3">
                   {[
-                    { id: "envio", label: "Envío a domicilio", desc: "Coordinamos el costo por WhatsApp", icon: Truck },
+                    { id: "envio", label: "Envío a domicilio", desc: "Te contactamos para coordinar el costo del envío", icon: Truck },
                     { id: "retiro", label: "Retiro en el local", desc: STORE_ADDRESS, icon: Store },
                   ].map((opt) => {
                     const Icon = opt.icon;
@@ -1185,17 +1256,27 @@ export default function LimpiezaApp() {
                     style={{ border: `1px solid ${colors.mintDark}`, background: colors.white }}
                   />
                   <input
-                    placeholder="Teléfono"
+                    placeholder="Teléfono (WhatsApp)"
+                    type="tel"
+                    inputMode="tel"
                     value={contact.telefono}
                     onChange={(e) => setContact({ ...contact, telefono: e.target.value })}
                     className="rounded-xl px-3 py-2.5 text-sm"
                     style={{ border: `1px solid ${colors.mintDark}`, background: colors.white }}
                   />
+                  <textarea
+                    placeholder="Notas para el pedido (opcional)"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    className="rounded-xl px-3 py-2.5 text-sm"
+                    style={{ border: `1px solid ${colors.mintDark}`, background: colors.white, resize: "none" }}
+                  />
                 </div>
               )}
 
               {/* PASO 4: RESUMEN */}
-              {step === 4 && (
+              {step === 4 && !sentOrder && (
                 <div className="flex flex-col gap-3">
                   <div className="rounded-2xl p-4" style={{ background: colors.white, border: `1px solid ${colors.mintDark}` }}>
                     {cartItems.map((p) => (
@@ -1210,6 +1291,12 @@ export default function LimpiezaApp() {
                       <span>{delivery === "envio" ? "Envío a domicilio" : "Retiro en el local"}</span>
                     </div>
                     {delivery === "envio" && (
+                      <div className="flex justify-between gap-3 text-sm">
+                        <span>Dirección</span>
+                        <span className="text-right">{address.calle} {address.altura}{address.barrio ? ", " + address.barrio : ""}</span>
+                      </div>
+                    )}
+                    {delivery === "envio" && (
                       <div className="flex justify-between text-sm">
                         <span>Horario</span>
                         <span>{timeSlot === "manana" ? "Mañana" : "Tarde"}</span>
@@ -1219,25 +1306,90 @@ export default function LimpiezaApp() {
                       <span>Pago</span>
                       <span>{payment === "efectivo" ? "Efectivo" : "Transferencia"}</span>
                     </div>
+                    <div className="flex justify-between text-sm">
+                      <span>A nombre de</span>
+                      <span>{contact.nombre}</span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: colors.mint }}>
                     <Check size={16} color={colors.primary} />
                     <span style={{ fontSize: 12, color: colors.primaryDark }}>
-                      Al confirmar se abre WhatsApp con el pedido listo para enviar.
+                      {ORDER_EMAIL
+                        ? "Al confirmar, el pedido nos llega al instante. Te contactamos para coordinar."
+                        : "Al confirmar se abre WhatsApp con el pedido listo para enviar."}
                     </span>
                   </div>
+                  {sendState === "error" && (
+                    <div className="rounded-xl px-4 py-3 fade-in" style={{ background: "#FFE9E4", color: "#8A2A14", fontSize: 12.5 }}>
+                      No pudimos enviar el pedido (¿sin conexión?). Probá de nuevo, o mandalo por WhatsApp:
+                      <a
+                        href={waHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 w-full rounded-full py-2.5 flex items-center justify-center gap-2"
+                        style={{ background: "#25D366", color: colors.white, fontWeight: 700 }}
+                      >
+                        <MessageCircle size={15} />
+                        Enviar por WhatsApp
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* PEDIDO ENVIADO */}
+              {sentOrder && (
+                <div className="flex flex-col items-center text-center py-6 fade-in">
+                  <div className="rounded-full flex items-center justify-center mb-3" style={{ width: 64, height: 64, background: colors.primary }}>
+                    <Check size={32} color={colors.white} />
+                  </div>
+                  <p style={{ fontFamily: "'Baloo 2', sans-serif", fontWeight: 700, fontSize: 20 }}>¡Gracias por tu compra!</p>
+                  <p style={{ color: colors.gray, fontSize: 13, marginTop: 4 }}>
+                    Recibimos tu pedido <b style={{ color: colors.ink }}>{sentOrder.id}</b> por <b style={{ color: colors.ink }}>${money(sentOrder.total)}</b>.
+                    <br />
+                    Te contactamos a la brevedad para coordinar.
+                  </p>
+                  {sentOrder.payment === "transferencia" && (
+                    <div className="w-full rounded-2xl p-4 mt-4 text-left" style={{ background: colors.mint, border: `1px solid ${colors.mintDark}` }}>
+                      <div style={{ fontSize: 12.5, color: colors.primaryDark, marginBottom: 8 }}>
+                        Si pagás por transferencia, el alias es <b>{MP_ALIAS}</b>. Mandanos el comprobante:
+                      </div>
+                      <a
+                        href={`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(`Hola! Te mando el comprobante del pedido ${sentOrder.id}.`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full rounded-full py-2.5 flex items-center justify-center gap-2"
+                        style={{ background: "#25D366", color: colors.white, fontWeight: 700, fontSize: 13 }}
+                      >
+                        <MessageCircle size={15} />
+                        Enviar comprobante por WhatsApp
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* FOOTER DEL SHEET */}
             <div className="px-5 py-4" style={{ background: colors.white, borderTop: `1px solid ${colors.mintDark}` }}>
+              {!sentOrder && (
               <div className="flex items-center justify-between mb-3">
                 <span style={{ fontSize: 13, color: colors.gray }}>Subtotal</span>
                 <PriceTag amount={subtotal} />
               </div>
+              )}
 
-              {step === 0 && (
+              {sentOrder && (
+                <button
+                  onClick={closeSheet}
+                  className="w-full rounded-full py-3"
+                  style={{ background: colors.primary, color: colors.white, fontFamily: "'Baloo 2', sans-serif", fontWeight: 600, fontSize: 14 }}
+                >
+                  Seguir comprando
+                </button>
+              )}
+
+              {step === 0 && !sentOrder && (
                 <button
                   disabled={cartItems.length === 0}
                   onClick={() => setStep(1)}
@@ -1301,7 +1453,18 @@ export default function LimpiezaApp() {
                   Revisar pedido
                 </button>
               )}
-              {step === 4 && (
+              {step === 4 && !sentOrder && ORDER_EMAIL && (
+                <button
+                  onClick={sendOrder}
+                  disabled={sendState === "sending"}
+                  className="w-full rounded-full py-3 flex items-center justify-center gap-2"
+                  style={{ background: colors.lime, color: colors.white, fontFamily: "'Baloo 2', sans-serif", fontWeight: 700, fontSize: 15, opacity: sendState === "sending" ? 0.7 : 1 }}
+                >
+                  {sendState === "sending" ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
+                  {sendState === "sending" ? "Enviando..." : "Confirmar pedido"}
+                </button>
+              )}
+              {step === 4 && !sentOrder && !ORDER_EMAIL && (
                 <a
                   href={waHref}
                   target="_blank"

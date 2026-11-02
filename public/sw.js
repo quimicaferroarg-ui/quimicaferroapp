@@ -1,4 +1,4 @@
-const CACHE_NAME = "quimica-ferro-v2";
+const CACHE_NAME = "quimica-ferro-v3";
 
 self.addEventListener("install", () => self.skipWaiting());
 
