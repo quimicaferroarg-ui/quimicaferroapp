@@ -18,7 +18,7 @@ const MP_ALIAS = "quimicaferro"; // alias de Mercado Pago para transferencias
 // WEB3FORMS_KEY es la "Access Key" que Web3Forms manda a esa casilla; es pública,
 // solo sirve para enviar mails a esa dirección.
 // Si queda vacía, el pedido se manda por WhatsApp como antes.
-const WEB3FORMS_KEY = "";
+const WEB3FORMS_KEY: string = "2d134887-5d81-4809-b8a2-7c227c29b200";
 const ORDER_EMAIL_ENABLED = WEB3FORMS_KEY !== "";
 
 const colors = {
