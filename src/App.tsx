@@ -746,6 +746,22 @@ export default function LimpiezaApp() {
       clearTimeout(timer);
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.success !== true) throw new Error("send failed");
+      // Aviso por WhatsApp al local (si está configurado en Vercel). No frena el pedido si falla.
+      const aviso = [
+        `🛒 Nuevo pedido ${orderId}`,
+        `${contact.nombre} · Tel ${contact.telefono}`,
+        `Total $${money(subtotal)} · ${payment === "efectivo" ? "Efectivo" : "Transferencia"}`,
+        delivery === "envio"
+          ? `Envío: ${address.calle} ${address.altura}${address.barrio ? ", " + address.barrio : ""} (${timeSlot === "manana" ? "mañana" : "tarde"})`
+          : "Retira en el local",
+        `${cartItems.length} ${cartItems.length === 1 ? "producto" : "productos"} · detalle en el mail`,
+      ].join("\n");
+      fetch("/api/notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aviso }),
+        keepalive: true,
+      }).catch(() => {});
       setSentOrder({ id: orderId, payment, total: subtotal });
       setSendState("idle");
       resetOrder();
