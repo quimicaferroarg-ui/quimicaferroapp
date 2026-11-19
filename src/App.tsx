@@ -14,11 +14,12 @@ const WHATSAPP_NUMBER = "5491154647972"; // 11 5464-7972
 const STORE_ADDRESS = "Altolaguirre 1427/29, C.A.B.A.";
 const STORE_HOURS = "Lun a vie de 16 a 20 hs · Sáb de 10 a 13:30 hs";
 const MP_ALIAS = "quimicaferro"; // alias de Mercado Pago para transferencias
-// Mail donde llegan los pedidos. Se envían con FormSubmit (formsubmit.co):
-// el primer pedido manda un mail de activación a esta casilla; hay que tocar
-// "Activate" una sola vez y desde ahí llegan todos directo.
-// Si queda vacío, el pedido se manda por WhatsApp como antes.
-const ORDER_EMAIL = "quimicaferroarg@gmail.com";
+// Los pedidos llegan por mail a quimicaferroarg@gmail.com usando Web3Forms (web3forms.com).
+// WEB3FORMS_KEY es la "Access Key" que Web3Forms manda a esa casilla; es pública,
+// solo sirve para enviar mails a esa dirección.
+// Si queda vacía, el pedido se manda por WhatsApp como antes.
+const WEB3FORMS_KEY = "";
+const ORDER_EMAIL_ENABLED = WEB3FORMS_KEY !== "";
 
 const colors = {
   bg: "#F6FBFA",
@@ -714,13 +715,17 @@ export default function LimpiezaApp() {
     const orderId = newOrderId();
     setSendState("sending");
     try {
-      const res = await fetch(`https://formsubmit.co/ajax/${ORDER_EMAIL}`, {
+      // Si el servicio no contesta en 15 segundos, se corta y se ofrece WhatsApp.
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      const res = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
+        signal: controller.signal,
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
-          _subject: `Nuevo pedido ${orderId} — ${contact.nombre} — $${money(subtotal)}`,
-          _template: "box",
-          _captcha: "false",
+          access_key: WEB3FORMS_KEY,
+          subject: `Nuevo pedido ${orderId} — ${contact.nombre} — $${money(subtotal)}`,
+          from_name: `${STORE_NAME} - Pedidos web`,
           Pedido: orderId,
           Nombre: contact.nombre,
           Teléfono: contact.telefono,
@@ -738,8 +743,9 @@ export default function LimpiezaApp() {
           Notas: notes.trim() || "-",
         }),
       });
+      clearTimeout(timer);
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || String(data.success) === "false") throw new Error("send failed");
+      if (!res.ok || data.success !== true) throw new Error("send failed");
       setSentOrder({ id: orderId, payment, total: subtotal });
       setSendState("idle");
       resetOrder();
@@ -1314,7 +1320,7 @@ export default function LimpiezaApp() {
                   <div className="flex items-center gap-2 rounded-xl px-4 py-3" style={{ background: colors.mint }}>
                     <Check size={16} color={colors.primary} />
                     <span style={{ fontSize: 12, color: colors.primaryDark }}>
-                      {ORDER_EMAIL
+                      {ORDER_EMAIL_ENABLED
                         ? "Al confirmar, el pedido nos llega al instante. Te contactamos para coordinar."
                         : "Al confirmar se abre WhatsApp con el pedido listo para enviar."}
                     </span>
@@ -1453,7 +1459,7 @@ export default function LimpiezaApp() {
                   Revisar pedido
                 </button>
               )}
-              {step === 4 && !sentOrder && ORDER_EMAIL && (
+              {step === 4 && !sentOrder && ORDER_EMAIL_ENABLED && (
                 <button
                   onClick={sendOrder}
                   disabled={sendState === "sending"}
@@ -1464,7 +1470,7 @@ export default function LimpiezaApp() {
                   {sendState === "sending" ? "Enviando..." : "Confirmar pedido"}
                 </button>
               )}
-              {step === 4 && !sentOrder && !ORDER_EMAIL && (
+              {step === 4 && !sentOrder && !ORDER_EMAIL_ENABLED && (
                 <a
                   href={waHref}
                   target="_blank"
