@@ -8,7 +8,7 @@ import {
 /* ============================================================
    CONFIGURACIÓN DEL LOCAL — para editar según el negocio real
    ============================================================ */
-const STORE_NAME = "Química Ferro";
+const STORE_NAME = "FERRO STORE";
 const STORE_TAGLINE = "Limpieza, bazar y artículos para el hogar";
 const WHATSAPP_NUMBER = "5491154647972"; // 11 5464-7972
 const STORE_ADDRESS = "Altolaguirre 1427/29, C.A.B.A.";
